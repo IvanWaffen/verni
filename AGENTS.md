@@ -13,6 +13,7 @@ Read before any non-trivial change:
 - [docs/architecture-rules.md](docs/architecture-rules.md): **mandatory** rules `AR-xx`
 - [docs/adr/](docs/adr/): accepted decisions
 - [docs/workflow.md](docs/workflow.md): full workflow
+- [docs/design/frontend-spec.md](docs/design/frontend-spec.md): **mandatory for any UI work**: tokens, components, screens, deviations from the mockups in `docs/design/mockups/`
 - [frontend/AGENTS.md](frontend/AGENTS.md): Next.js 16 differs from older versions; read the bundled docs in `node_modules/next/dist/docs/`
 
 ## The owner
