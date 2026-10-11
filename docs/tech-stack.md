@@ -123,7 +123,7 @@ Proposed aggregates and tables (a detailed ERD is a separate artifact after the 
 |---|---|
 | `users` | id, email, display_name, status, timestamps |
 | `sessions` / auth tokens | expiry, revocation, one-time email tokens (hashed) |
-| `listings` | id, author_id, type (`LOST`/`FOUND`), title, description, category_id, happened_at, location, public_location, status, closed_reason |
+| `listings` | id, author_id, type (`LOST`/`FOUND`), title, description, category_id, happened_at, location, public_location, public_features, hidden_features (author only), status, closed_reason |
 | `listing_photos` | listing_id, storage_key, order, image metadata |
 | `categories` | item category dictionary, `sensitive` flag |
 | `responses` | listing_id, responder_id, status, agreed_at, author_confirmed_at, responder_confirmed_at, completed_at |
