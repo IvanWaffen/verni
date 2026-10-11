@@ -6,15 +6,24 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 VERNI is a web platform for returning lost items (Russia, Russian UI). It is a Spring Boot 4.1 / Java 25 modular monolith (`backend/`) plus a Next.js 16 frontend (`frontend/`), PostgreSQL + PostGIS, deployed with Docker Compose.
 
-Read before any non-trivial change:
+## What to read (keep context small)
 
-- [docs/business-requirements.md](docs/business-requirements.md): what we build and why
-- [docs/tech-stack.md](docs/tech-stack.md): stack, modules, API sketch
-- [docs/architecture-rules.md](docs/architecture-rules.md): **mandatory** rules `AR-xx`
-- [docs/adr/](docs/adr/): accepted decisions
-- [docs/workflow.md](docs/workflow.md): full workflow
-- [docs/design/frontend-spec.md](docs/design/frontend-spec.md): **mandatory for any UI work**: tokens, components, screens, deviations from the mockups in `docs/design/mockups/`
-- [frontend/AGENTS.md](frontend/AGENTS.md): Next.js 16 differs from older versions; read the bundled docs in `node_modules/next/dist/docs/`
+**Do not read whole documents.** Start from the issue: it cites the relevant `BR-xx`, `AR-xx`, ADRs and spec sections. Read only those sections (`grep -n "AR-24" docs/architecture-rules.md`, then read that range).
+
+| Task touches | Read |
+|---|---|
+| Any backend code | `docs/architecture-rules.md` §1–§3 (boundaries, layers, transactions) once per session, plus the cited rules |
+| Data / migrations | architecture-rules §4 |
+| REST endpoints | architecture-rules §5–§6 |
+| UI | `docs/design/frontend-spec.md` §1–§3 + the screen section cited in the issue; mockup image only if layout is unclear; architecture-rules §7 |
+| Background jobs / email | architecture-rules §8 |
+| Demo / new business table | architecture-rules §9 |
+| Tests | architecture-rules §10 |
+| Business behavior unclear | the cited `BR-xx` / lifecycle in `docs/business-requirements.md` §4–§6; ask the owner if still unclear |
+| Decisions | `docs/adr/README.md` index, then the specific ADR |
+| Next.js APIs | [frontend/AGENTS.md](frontend/AGENTS.md): the bundled docs in `node_modules/next/dist/docs/` |
+
+`docs/tech-stack.md` (stack overview, API sketch) and `docs/workflow.md` (human-oriented process) are reference material; this file already summarizes what an agent needs from them.
 
 ## The owner
 
@@ -29,7 +38,7 @@ The owner is a PHP/Laravel developer learning Java/Spring through this project. 
 5. **Commits:** Conventional Commits with the module as scope: `feat(listings): ...`. End commit messages with the `Co-Authored-By` trailer.
 6. **Learning note (mandatory for code changes):** add `docs/learning/NNNN-<slug>.md` following [docs/learning/README.md](docs/learning/README.md) and update [docs/learning/laravel-to-spring.md](docs/learning/laravel-to-spring.md) with new concept pairs.
 7. **Verify locally** before pushing (see Commands).
-8. **PR:** `gh pr create` with a Conventional Commits title. The template asks for issue link, verification steps, learning note and the AR checklist. Then watch CI (`gh pr checks --watch`) and fix failures.
+8. **PR:** `gh pr create` with a Conventional Commits title. Allowed scopes (`pr-title` check): `identity listings discovery responses messaging media moderation notifications audit demo shared backend frontend infra ci docs deps`, or no scope. The template asks for issue link, verification steps, learning note and the AR checklist. Then watch CI (`gh pr checks --watch`) and fix failures.
 9. **Never merge PRs.** The owner reviews and squash-merges.
 10. **Board:** move the issue on the [project board](https://github.com/users/IvanWaffen/projects/1) to `In progress` when work starts and to `Review` when the PR is open (merged/closed items move to `Done` automatically). Add new issues and PRs to the board.
 
@@ -39,6 +48,16 @@ The owner is a PHP/Laravel developer learning Java/Spring through this project. 
 ITEM=$(gh project item-add 1 --owner IvanWaffen --url <issue-or-pr-url> --format json -q .id)
 gh project item-edit --project-id PVT_kwHOEHBS7c4BmlA3 --id "$ITEM" \
   --field-id PVTSSF_lAHOEHBS7c4BmlA3zhlNccE --single-select-option-id 88dbd9f4
+```
+
+## Known gh CLI issues
+
+`gh pr edit` (and other commands that query PR `projectCards`) fails with "Projects (classic) is being deprecated". Use the REST API instead:
+
+```bash
+gh api -X PATCH repos/IvanWaffen/verni/pulls/<n> -f title="..."          # also: -f body="..." , -f base=main
+gh api -X PUT repos/IvanWaffen/verni/pulls/<n>/update-branch             # PR is BEHIND main
+gh api repos/IvanWaffen/verni/issues/<n>/labels -f "labels[]=blocked"    # add a label
 ```
 
 ## Commands

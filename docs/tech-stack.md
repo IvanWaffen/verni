@@ -1,185 +1,100 @@
 # VERNI — Tech Stack and Architecture
 
-> **Version:** 1.1 (solution design)  
-> **Date:** 2026-10-11  
-> **Status:** agreed baseline stack for MVP planning  
-> **Related documents:** [business-requirements.md](business-requirements.md), [architecture-rules.md](architecture-rules.md)
+> **Version:** 1.2 · **Date:** 2026-10-11 · Rules: [architecture-rules.md](architecture-rules.md) · Decisions: [adr/](adr/README.md)
 
 ## 1. Technical goal
 
-Build a phone-friendly platform for finding lost and found items with a public feed and map, fast publishing, protected responses, match suggestions and a personal Kanban board.
-
-**Priorities:** a complete user scenario → security → mobile usability → architecture and test quality → performance based on real metrics.
-
-Strategy: a **modular monolith** with a REST API; no microservices, Kubernetes, Kafka or mandatory AI dependencies in the MVP.
+A phone-friendly platform for lost and found items: public feed and map, fast publishing, private responses, match suggestions, personal Kanban. A **modular monolith** with a REST API; no microservices, Kubernetes, Kafka or AI dependencies in the MVP.
 
 ## 2. Technology stack
 
-| Layer | Chosen technology | Why |
-|---|---|---|
-| Backend language | **Java 25 LTS** | Long-term support; records, modern JVM stack |
-| Backend framework | **Spring Boot 4.1.1** | Web API, validation, security, transactions, observability |
-| HTTP | Spring Web MVC | Predictable request/response model; WebFlux is not needed |
-| Authentication | Spring Security + server-side sessions (Spring Session JDBC), HttpOnly cookies | Secure login via one-time email code/link |
-| Business logic and data | Spring Data JPA / Hibernate | Typical CRUD and transactional domain operations |
-| Geo search | Spring JDBC (`JdbcClient`) + PostGIS SQL | Controlled spatial queries |
-| Database | PostgreSQL + PostGIS | Reliable SQL model, indexes and distance search |
-| Migrations | Flyway | Schema versioning, migrations in CI |
-| Build | Maven + Maven Wrapper | Reproducible builds and a single lifecycle |
-| Frontend | Next.js + React + TypeScript | Public SEO pages, mobile UI, PWA |
-| UI | Tailwind CSS + shadcn/ui | Fast design system and form development |
-| Map | MapLibre GL JS + a licensed tile provider | Map vendor flexibility, geo UI support |
-| Photos | S3-compatible Object Storage | Images stored separately from the app |
-| Background jobs | PostgreSQL job/outbox + Spring scheduler | Durable notification jobs and retries |
-| API documentation | OpenAPI 3 (springdoc, code-first) | Frontend/backend contract; spec generation ([ADR-0005](adr/0005-openapi-code-first.md)) |
-| Backend testing | JUnit 5 + Spring Boot Test + Testcontainers | Domain, integration and transactional tests |
-| Frontend testing | Vitest + React Testing Library + Playwright | UI components and end-to-end scenarios |
-| Architecture checks | Spring Modulith 2.1 | Module boundary verification |
-| Observability | Spring Boot Actuator + Micrometer + structured logs | Health, metrics, diagnostics |
-| Infrastructure | Docker Compose + reverse proxy + TLS | Simple reproducible production deployment |
-| CI/CD | GitHub Actions | Build, lint, test, security checks, deploy |
-| Hosting | VPS/cloud VM in Russia; Selectel or Cloud.ru as candidates | Availability for the Russian audience |
+| Layer | Technology |
+|---|---|
+| Backend | **Java 25 LTS**, **Spring Boot 4.1** (Web MVC, Security, Data JPA, `JdbcClient` for PostGIS SQL), Maven Wrapper |
+| Modules | Spring Modulith 2.1 (boundary verification) |
+| Auth | Spring Security, server-side sessions (Spring Session JDBC), HttpOnly cookies |
+| Database | PostgreSQL + PostGIS, Flyway |
+| Background jobs | PostgreSQL outbox + Spring scheduler |
+| API | REST `/api/v1`, OpenAPI 3 via springdoc (code-first) |
+| Frontend | Next.js 16 + React + TypeScript, Tailwind CSS + shadcn/ui, MapLibre GL JS + licensed tiles |
+| Photos | S3-compatible object storage |
+| Tests | JUnit 5, Spring Boot Test, Testcontainers; Vitest, React Testing Library, Playwright |
+| Observability | Actuator, Micrometer, structured JSON logs |
+| Infra / CI | Docker Compose, reverse proxy with TLS, GitHub Actions, GHCR; VPS in Russia (Selectel / Cloud.ru candidates) |
 
-**Version notes:** Java 25 is the chosen LTS line; Spring Boot 4.1.1 is the stable version as of the document date. Exact patch versions are pinned in `pom.xml` / the lock file at initialization and then updated with compatibility checks.
-
-Version sources: https://www.oracle.com/java/technologies/java-se-support-roadmap.html and https://spring.io/projects/spring-boot.
+Exact versions are pinned in `backend/pom.xml` and `frontend/package-lock.json`.
 
 ## 3. System overview
 
 ```text
-User (mobile/desktop browser)
-                    |
-          HTTPS / reverse proxy
-                    |
-             Next.js frontend
-                    |
-             /api/v1 REST
-                    |
-        Spring Boot modular monolith
-  +-------------+-----------+--------------+
-  | Identity    | Listings  | Discovery    |
-  | Responses   | Messaging | Moderation   |
-  | Media       | Notifier  | Audit        |
-  +-------------+-----------+--------------+
-        |                  |           |
-   PostgreSQL/PostGIS      S3     Email provider
-        |
-   Outbox / jobs worker
+Browser → HTTPS reverse proxy → Next.js (/)  ──┐
+                              → Spring Boot (/api/*) modular monolith
+                                   ├─ PostgreSQL/PostGIS (+ outbox jobs worker)
+                                   ├─ S3 object storage
+                                   └─ Email provider
 ```
 
-Frontend and API should preferably live behind **one public domain** (`/` and `/api/*`) to simplify cookies, CSRF and CORS.
+Frontend and API share **one domain** (simpler cookies, CSRF, no CORS).
 
-### Modules
+| Module | Responsibility |
+|---|---|
+| `identity` | Email login, profiles, sessions, blocking |
+| `listings` | Item cards, categories, photos, publication status |
+| `discovery` | Feed, map, filters, full-text search, match candidates |
+| `responses` | Responses, handover agreement, return confirmation, invariants |
+| `messaging` | Private messages within a response |
+| `media` | Image intake, processing, storage |
+| `moderation` | Reports, hiding, moderator decisions |
+| `notifications` | Email via the outbox |
+| `audit` | History of significant actions |
+| `demo` | Demo sandboxes (demo deployment only) |
+| `shared` | Technical building blocks only |
 
-- `identity` — email authentication, profiles, sessions, blocking.
-- `listings` — item cards, categories, photos, publication status.
-- `discovery` — map, filters, full-text search, match candidates.
-- `responses` — responses, handover agreement, return completion, invariants.
-- `messaging` — private messages within a response.
-- `media` — image intake, processing and storage.
-- `moderation` — reports, hiding posts, moderator decisions.
-- `notifications` — email events, templates, retries.
-- `audit` — history of significant actions and state transitions.
-- `demo` — demo sandboxes; active only in the demo deployment ([ADR-0001](adr/0001-demo-server-sandbox.md)).
-
-Externally, modules interact through public service interfaces/application events, **never accessing a neighbor module's internal repositories directly**. A separate database per module is not required for the first release.
-
-### Directory structure
-
-```text
-verni/
-├── backend/
-│   ├── src/main/java/ru/verni/
-│   │   ├── identity/
-│   │   ├── listings/
-│   │   ├── discovery/
-│   │   ├── responses/
-│   │   ├── messaging/
-│   │   ├── media/
-│   │   ├── moderation/
-│   │   ├── notifications/
-│   │   ├── audit/
-│   │   ├── demo/
-│   │   └── shared/
-│   ├── src/main/resources/db/migration/
-│   ├── src/main/resources/db/migration-demo/
-│   └── pom.xml
-├── frontend/
-├── infrastructure/
-│   ├── docker/
-│   └── proxy/
-├── docs/
-│   ├── adr/
-│   └── api/
-├── .github/workflows/
-└── compose.yaml
-```
+Allowed dependencies between modules: AR-03.
 
 ## 4. Key data
 
-Proposed aggregates and tables (a detailed ERD is a separate artifact after the business rules are agreed):
-
-| Entity | Main fields / purpose |
+| Table | Main fields |
 |---|---|
 | `users` | id, email, display_name, status, timestamps |
-| `sessions` / auth tokens | expiry, revocation, one-time email tokens (hashed) |
+| sessions / auth tokens | expiry, revocation, hashed one-time tokens |
 | `listings` | id, author_id, type (`LOST`/`FOUND`), title, description, category_id, happened_at, location, public_location, public_features, hidden_features (author only), status, closed_reason |
-| `listing_photos` | listing_id, storage_key, order, image metadata |
-| `categories` | item category dictionary, `sensitive` flag |
+| `listing_photos` | listing_id, storage_key, order, metadata |
+| `categories` | dictionary, `sensitive` flag |
 | `responses` | listing_id, responder_id, status, agreed_at, author_confirmed_at, responder_confirmed_at, completed_at |
 | `messages` | response_id, sender_id, body, created_at |
-| `matches` (optional) | listing_id, candidate_id, score, algorithm/version, created_at |
+| `matches` (optional) | listing_id, candidate_id, score, algorithm version |
 | `reports` | reporter_id, listing_id, reason, moderation_status |
-| `listing_events` | actor_id, listing_id, transition/action, timestamp |
+| `listing_events` | actor_id, listing_id, action, timestamp |
 | `outbox_jobs` | type, payload, attempts, next_run_at, state, idempotency_key |
 
-- Public entity IDs are UUIDv7 generated by the application ([ADR-0006](adr/0006-uuidv7-identifiers.md)).
-- Introduce denormalization only based on measurements.
-- Store the actual date of loss/find separately from the publication date.
-- The public API **never returns email, hidden features, IP or exact personal coordinates**.
+The detailed ERD grows with the migrations. Denormalize only based on measurements.
 
 ## 5. Geolocation and matching
 
-- For a post the user specifies an **approximate area** on the map; an exact home address is not needed.
-- The public point is snapped to a grid: 500 m by default, 1500 m for sensitive categories ([ADR-0003](adr/0003-public-location-coarsening.md)).
-- Use PostGIS `geography(Point, 4326)` with a `GiST` index.
-- Radius search uses `ST_DWithin` over the public point, with pagination and a bounded result area; filters by type, category, date and status.
-- Matching: opposite post type + category + proximity in time/space + optional public features. These are **candidates**, not proof of ownership.
-- Never reveal hidden distinguishing features specified for later owner verification.
-- No ML, photo recognition or paid AI APIs at the start.
-- Use geodata only on a direct user action; GPS access requires browser permission and a manual alternative.
+Rules: AR-24, ADR-0003. Matching = opposite type + category + public-point distance + time window + public features; results are candidates, never proof of ownership. No ML in the MVP. GPS only on a direct user action, with a manual alternative.
 
 ## 6. Authorization, access and security
 
-1. Guests can view the map, feed and public cards without logging in.
-2. A user can prepare a draft before logging in (stored on the client, [ADR-0004](adr/0004-client-side-draft.md)); before publishing they confirm their email with a one-time code or link.
-3. The backend uses a server-side session with `Secure`, `HttpOnly`, `SameSite` cookies; CSRF protection for state-changing requests.
-4. An author edits and closes only their own post; a responder sees only their own conversations; a moderator has limited administrative access.
-5. Rate limits on login, posting, responses and messages; anti-spam and reports are mandatory.
-6. Photos: allowed formats and limits, server-side re-encoding, EXIF stripping, MIME/signature checks, random storage keys, access control on upload.
-7. Never show hidden contacts or exact addresses in public cards or SEO meta tags.
-8. Account deletion/blocking and data retention are designed with applicable Russian personal data law in mind. A data processing policy and a legal review are required before launch.
-9. All tokens, SMTP/S3 credentials and DB passwords come from environment variables/CI secrets; never commit them to the repository.
-10. Logs contain no tokens, messages or sensitive user information.
+Rules: AR-31…AR-38. Additionally:
+
+1. Guests browse the map, feed and public cards.
+2. A draft is prepared before login (ADR-0004); publishing requires a confirmed email.
+3. Authors change only their listings; participants see only their conversations; moderators have limited admin access.
+
+**§6.8 Personal data:** account deletion, blocking and retention follow Russian personal data law; a policy and legal review are required before launch (#16).
 
 ## 7. Consistency rules
 
-- Posts and responses have **separate state machines**.
-- A card can have several responses, but only one active agreed handover at a time.
-- Agreeing a handover is a transactional operation with authorization and state checks. A repeated command is idempotent or ends with an expected conflict without side effects.
-- Completing a return (second confirmation) closes the post; new responses are forbidden, remaining open responses move to a proper terminal state.
-- For concurrent operations: unique constraints and/or row locks, race tests.
-- Audit events and notification jobs are stored in the same transaction as the business state change (transactional outbox).
+AR-14…AR-18.
 
 ## 8. API (contract sketch)
 
 ```http
-POST   /api/v1/auth/email/request
-POST   /api/v1/auth/email/verify
-POST   /api/v1/auth/logout
+POST   /api/v1/auth/email/request | /auth/email/verify | /auth/logout
 GET    /api/v1/me
 
-GET    /api/v1/listings?type=LOST&lat=...&lon=...&radius_km=...
+GET    /api/v1/listings?type=&category=&lat=&lon=&radius_km=&q=&cursor=
 POST   /api/v1/listings
 GET    /api/v1/listings/{id}
 PATCH  /api/v1/listings/{id}
@@ -189,89 +104,57 @@ GET    /api/v1/listings/{id}/matches
 POST   /api/v1/listings/{id}/responses
 GET    /api/v1/me/responses
 POST   /api/v1/responses/{id}/messages
-POST   /api/v1/responses/{id}/agree-handover
-POST   /api/v1/responses/{id}/cancel-handover
-POST   /api/v1/responses/{id}/confirm-return
-POST   /api/v1/responses/{id}/reject
+POST   /api/v1/responses/{id}/agree-handover | cancel-handover | confirm-return | reject
 
 GET    /api/v1/me/board
+GET    /api/v1/media/{id}
 POST   /api/v1/reports
 GET    /api/v1/admin/reports
 POST   /api/v1/admin/reports/{id}/resolve
-
-POST   /api/v1/demo/sandboxes            (demo deployment only)
+POST   /api/v1/demo/sandboxes          (demo deployment only)
 ```
 
-- The contract is code-first: the OpenAPI spec is generated from the code and committed ([ADR-0005](adr/0005-openapi-code-first.md)).
-- Errors use a single Problem Details format (`application/problem+json`), validated input DTOs and stable error codes.
-- Lists use cursor pagination.
-- Public GET endpoints are available without a session; state-changing operations require authentication and authorization.
+Contract rules: AR-26…AR-30.
 
 ## 9. Background processes
 
-MVP: sending email codes, notifications about new responses/messages, reminders about agreed handovers and pending return confirmations, periodic cleanup of expired tokens, temporary files and expired demo sandboxes.
-
-Implementation: an `outbox_jobs` table, claimed with `FOR UPDATE SKIP LOCKED`, attempt limit, backoff, error monitoring, idempotent handlers. A separate message broker is not needed yet.
+Email codes, notifications about responses/messages, handover and confirmation reminders, cleanup of expired tokens, temporary files and demo sandboxes. Rules: AR-47…AR-49.
 
 ## 10. Frontend and UX
 
-- Mobile-first, target widths from **360 px**; tablet/desktop as well.
-- Pages: home feed/map, publishing, item card, responses and conversations, personal Kanban board, profile, help, policies and rules, moderation.
-- Minimum steps in the publishing flow: photo → "lost/found" → location → short description → publish (login without losing the draft).
-- A public card has a readable URL, SEO metadata, OG preview and a "Share" button.
-- Accessibility: keyboard navigation, labeled form fields, clear errors, contrast; target WCAG 2.2 AA.
-- PWA: install to the home screen and shell caching; **do not promise full offline mode**.
-- The map is an additional way to search; the full feed remains available without the map.
+Rules: AR-39…AR-46; screens and tokens: [design/frontend-spec.md](design/frontend-spec.md). Mobile-first from 360 px, WCAG 2.2 AA target, readable URLs with SEO/OG for public cards, PWA (installable shell, **no offline promises**), the feed always works without the map.
 
 ## 11. CI/CD and operations
 
-### Pipeline (GitHub Actions)
-
-1. Format / style / static checks (`mvn verify`, frontend lint/typecheck).
-2. Unit tests.
-3. Integration tests with PostgreSQL/PostGIS via Testcontainers.
-4. Building backend and frontend containers.
-5. Scanning dependencies/images for known vulnerabilities.
-6. Deploying to staging; Playwright smoke/E2E.
-7. Manual approval of the production deployment; post-release health check.
-
-### Production baseline
-
-- HTTPS, reverse proxy, separate frontend / backend / PostgreSQL services.
-- Object Storage with backups and an object lifecycle policy.
-- Regular PostgreSQL backups **to independent storage**; restore testing.
-- Health/readiness endpoints, structured JSON logs, error tracking, basic technical metrics and alerts.
-- Secrets outside Git; restricted access to the DB and the admin panel.
-- Separate `local`, `staging`, `production` and `demo` environments.
+Pipeline and environments: [workflow.md](workflow.md) §5–§6. Production baseline: HTTPS reverse proxy; separate frontend, backend and PostgreSQL services; object storage with backups and lifecycle policy; PostgreSQL backups to independent storage with tested restore; health/readiness, JSON logs, error tracking, metrics and alerts; secrets outside Git; restricted DB/admin access; environments `local`, `staging`, `demo`, `production`.
 
 ## 12. Verifiable technical outcomes
 
 | ID | Done criterion |
 |---|---|
 | TECH-01 | A new environment starts locally with documented commands; CI passes without manual steps |
-| TECH-02 | The API is documented with OpenAPI; contracts are typed on the frontend |
+| TECH-02 | The API is documented with OpenAPI; frontend contracts are typed |
 | TECH-03 | Geo search is correct in tests with real PostGIS and a spatial index |
 | TECH-04 | Access rights are covered by negative integration tests |
-| TECH-05 | Concurrent requests do not create two simultaneously agreed handovers |
-| TECH-06 | Photos contain no original EXIF coordinates after publishing |
-| TECH-07 | Notifications survive a short SMTP outage and are retried without mass duplicates |
+| TECH-05 | Concurrent requests never create two agreed handovers |
+| TECH-06 | Published photos contain no original EXIF coordinates |
+| TECH-07 | Notifications survive a short SMTP outage and are retried without duplicates |
 | TECH-08 | E2E passes: "lost → found → contacted → returned" and the two-claimant conflict |
-| TECH-09 | Restoring the DB from a backup is tested and documented |
-| TECH-10 | The public demo mode cannot change real user data |
+| TECH-09 | DB restore from backup is tested and documented |
+| TECH-10 | The public demo cannot change real user data |
 
-**Targets, not current facts:** on a test environment define a search response time budget (e.g. p95 < 500 ms for a fixed dataset and load profile), measure mobile Web Vitals and the share of successfully completed user scenarios.
+Targets to set on staging (not current facts): search p95 budget (e.g. < 500 ms on a fixed dataset), mobile Web Vitals, share of completed user scenarios.
 
 ## 13. Deliberately not in the MVP
 
-Microservices; Kubernetes; Kafka/RabbitMQ; WebFlux; GraphQL; native mobile apps; AI image search; SMS/Gosuslugi/VK ID; payments; ratings; organizations with role hierarchies; automatic ownership verification; full real-time WebSocket chat; complex ML recommendations.
+Microservices, Kubernetes, Kafka/RabbitMQ, WebFlux, GraphQL, native apps, AI image search, SMS/Gosuslugi/VK ID, payments, ratings, organizations, automatic ownership verification, WebSocket chat, ML recommendations.
 
-## 14. Open decisions before development
+## 14. Open technical decisions
 
-- Passwordless login method: magic link or email OTP (choose one primary UX) — **open**.
-- Whether a photo is mandatory for "found" posts and allowed exceptions — **open**.
-- ~~Rules for approximate location and the public radius.~~ Decided: [ADR-0003](adr/0003-public-location-coarsening.md).
-- Email provider and a licensed tile source for Russia; terms and budget — **open**.
-- Exact category set and ranking criteria for match candidates — **open**.
-- ~~Return confirmation by one or both sides.~~ Decided: [ADR-0002](adr/0002-two-party-return-confirmation.md). Dispute resolution remains **open**.
+- Login method: email OTP or magic link (#7).
+- Mandatory photo for "found" posts and photo limits (#9).
+- Email provider; licensed tile provider for Russia (#5, #10).
+- Category set and match ranking criteria (#18).
+- Dispute resolution for handovers (#13).
 
-These items are recorded as separate ADRs before the corresponding modules are implemented. Other accepted decisions: [ADR-0001](adr/0001-demo-server-sandbox.md) (demo server sandbox), [ADR-0004](adr/0004-client-side-draft.md) (client-side draft), [ADR-0005](adr/0005-openapi-code-first.md) (code-first OpenAPI), [ADR-0006](adr/0006-uuidv7-identifiers.md) (UUIDv7). Development rules are in [architecture-rules.md](architecture-rules.md).
+Accepted decisions: [adr/README.md](adr/README.md).
