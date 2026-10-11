@@ -14,7 +14,7 @@ Closes #
 
 docs/learning/NNNN-<slug>.md
 
-## Checklist (docs/architecture-rules.md §13)
+## Checklist (rules: docs/architecture-rules.md)
 
 - [ ] No imports from other modules' `internal`/`web`, no new module arrows (AR-02–AR-04)
 - [ ] Status changes through aggregate methods; state machine tested (AR-10)

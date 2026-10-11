@@ -1,20 +1,7 @@
 # VERNI — Architecture Rules for Development
 
-> **Version:** 1.1  
-> **Date:** 2026-10-11  
-> **Status:** mandatory rule set for code, review and CI; deviations only via ADR  
-> **Related documents:** [business-requirements.md](business-requirements.md), [tech-stack.md](tech-stack.md), [adr/](adr/)
-
-## 0. How to use this document
-
-- Rules are numbered (`AR-xx`) and referenced in reviews and ADRs: "violates AR-12".
-- Whatever can be checked automatically is checked by CI (Spring Modulith, linters, tests). The rest is checked in review using the checklist (§13).
-- Changing a rule requires an ADR in `docs/adr/` (§12). Silent exceptions in code are not allowed.
-- The **[default]** marker means a choice was made so as not to block the skeleton. It can be revisited before the corresponding module is implemented (see §14).
-
-**Priorities when rules conflict** (same as the stack): a complete scenario → security and privacy → mobile UX → architectural cleanliness → performance by measurement.
-
----
+> Mandatory for code, review and CI. Rules are cited as `AR-xx`; changing one requires an ADR (AR-68). **[default]** = chosen to unblock the skeleton, revisable before the module is built.
+> Conflict priority: complete scenario → security/privacy → mobile UX → architecture → measured performance.
 
 ## 1. Modular monolith: boundaries
 
@@ -54,7 +41,7 @@ Neighbors use only the module's root package. Everything in `internal`/`web` is 
 
 Communication against an arrow (e.g. `listings` → `responses`) happens **only through events**. A new arrow in the table requires an ADR.
 
-**AR-04. Other modules' repositories, entities and tables are off limits.** A module does not import a neighbor's JPA entities or repositories and does not write SQL against its tables. Cross-module references are stored as IDs (`UUID listingId`), never as `@ManyToOne` to another module's entity. Foreign keys between module tables in the DB are allowed, since there is one database.
+**AR-04. Other modules' repositories, entities and tables are off limits.** No imports of a neighbor's entities/repositories, no SQL against its tables. Cross-module references are IDs (`UUID listingId`), never `@ManyToOne`. DB foreign keys between modules are allowed.
 
 **AR-05. The only sanctioned exception is the search read view.** `discovery` reads data through the SQL view `discovery_listings_v`. It is created and versioned by a `listings` migration. The view contains **only publicly allowed fields** (no email, hidden features or exact point). `discovery` writes nothing.
 
@@ -113,12 +100,7 @@ CREATE UNIQUE INDEX ux_responses_one_open_per_user
 
 A constraint violation becomes a `409` with a stable error code, not a `500`.
 
-**AR-16. Both sides confirm the return** ([ADR-0002](adr/0002-two-party-return-confirmation.md)).
-- After `HANDOVER_AGREED`, each side calls `POST /responses/{id}/confirm-return`. The fact is recorded in `author_confirmed_at` and `responder_confirmed_at`.
-- The **second** confirmation moves the response to `COMPLETED`. In the same transaction: listing → `CLOSED/RETURNED`, other open responses → a terminal state, plus audit and outbox records.
-- Before completion either side can call `cancel-handover`: the response goes back to `DISCUSSING` and the handover slot is freed.
-- If the other side is silent, a reminder is sent after 3 days; after 14 days the author can complete the return alone, and the outcome gets `confirmation = ONE_SIDED`, visible in the history. Both periods are configurable.
-- Closing or hiding a listing publishes an event, and `responses` closes open responses **in the same transaction**.
+**AR-16. Both sides confirm the return** ([ADR-0002](adr/0002-two-party-return-confirmation.md): `confirm-return`, `cancel-handover`, 3/14-day timeouts). The second confirmation, in one transaction: response → `COMPLETED`, listing → `CLOSED/RETURNED`, other open responses → terminal, audit + outbox. Closing/hiding a listing terminates its open responses in the same transaction (via event).
 
 **AR-17. Repeated commands are idempotent.** If the entity is already in the target state from the same command by the same actor, return `200` with the current state **without new events or notifications**. If the transition is not allowed, return `409`. Concurrent edits use `@Version` (optimistic locking); the version is passed in the DTO.
 
@@ -148,9 +130,7 @@ A constraint violation becomes a `409` with a stable error code, not a `500`.
 
 **AR-24. Geodata.**
 - Type `geography(Point, 4326)`, GiST index, search via `ST_DWithin` with a mandatory result limit.
-- The public point is a **coarsened** point: snapped to a grid with a **500 m** step by default and **1500 m** for sensitive categories (documents, keys, bank cards). The sensitivity flag lives in the `categories` dictionary; grid steps are configurable ([ADR-0003](adr/0003-public-location-coarsening.md)).
-- Coarsening happens on the server on write and is stored in a separate column. It is recomputed when the category or point changes.
-- Search and matching use only the public point; only the public point is exposed (the original is visible only to the author).
+- `public_location` = server-side grid snap (500 m; 1500 m for `sensitive` categories), recomputed on change ([ADR-0003](adr/0003-public-location-coarsening.md)). Search, matching and all non-author responses use only it.
 
 **AR-25. Nothing is "physically deleted by default".** Listings hidden by moderators and closed listings stay in the DB for audit (BR-08). Personal data deletion is a separate procedure per the retention policy, not a `DELETE` in business code.
 
@@ -173,7 +153,7 @@ A constraint violation becomes a `409` with a stable error code, not a `500`.
 | 409 | Invalid transition or concurrency conflict | `HANDOVER_ALREADY_AGREED`, `LISTING_CLOSED` |
 | 429 | Rate limit exceeded | `RATE_LIMITED` |
 
-Codes are a stable contract. The frontend branches on `code`, not on message text.
+Codes are a stable contract; the frontend branches on `code`.
 
 **AR-29. A separate DTO for each audience.** `PublicListingView`, `OwnListingView`, `ModeratorListingView` are different classes. Extending a public DTO with "a field we fill only for the author" is forbidden. This is the main mechanism behind E2E-04.
 
@@ -255,36 +235,19 @@ Codes are a stable contract. The frontend branches on `code`, not on message tex
 
 ---
 
-## 9. Demo mode
+## 9. Demo mode ([ADR-0001](adr/0001-demo-server-sandbox.md))
 
-Decision: a server sandbox ([ADR-0001](adr/0001-demo-server-sandbox.md)). The demo runs on the **real** backend, so business invariants and races are visible live.
+**AR-50. Separate deployment** (`demo` profile, own DB, bucket and credentials without access to production). Production fails to start if `verni.demo.enabled=true`.
 
-**AR-50. The demo is a separate deployment.** The same code and images run with the `demo` profile on `demo.<domain>`.
-- The demo has its own database, S3 bucket and DB credentials. Demo credentials **have no access** to the production database and bucket.
-- Isolation from real data is enforced by infrastructure, not by filters in code (TECH-10).
-- Production starts with `verni.demo.enabled=false`. If the flag is enabled together with the production profile, the application fails on startup.
+**AR-51. One sandbox per visitor**, seeded through modules' public commands (never SQL inserts); login by persona choice, no email.
 
-**AR-51. Each visitor gets their own sandbox.**
-- `POST /api/v1/demo/sandboxes` creates a `sandbox_id` and demo personas, and seeds the story "backpack lost → found → two claimants".
-- Seeding goes through **the modules' public commands**, not SQL inserts, so the data always satisfies the invariants.
-- Demo login is a persona choice ("Anna lost it", "Boris found it", "Vera, the second claimant"), no email. Switching personas is a separate demo endpoint.
+**AR-52. RLS isolates sandboxes.** `db/migration-demo` adds `sandbox_id` (default from `current_setting('verni.sandbox_id')`) and an RLS policy to **every business table**; the backend sets `SET LOCAL verni.sandbox_id` per transaction; the app role has no `BYPASSRLS`; a test proves A cannot read B. Business code and the production schema know nothing about sandboxes.
 
-**AR-52. PostgreSQL Row-Level Security isolates sandboxes from each other.**
-- Demo migrations (`db/migration-demo`, applied only to the demo DB) add `sandbox_id uuid NOT NULL DEFAULT current_setting('verni.sandbox_id')::uuid` to every business table and an RLS policy `sandbox_id = current_setting('verni.sandbox_id')::uuid`.
-- At the start of each transaction the backend runs `SET LOCAL verni.sandbox_id` from the session.
-- Business code and JPA mappings know nothing about sandboxes. The production schema has no `sandbox_id` column.
-- The application connects with a role without `BYPASSRLS`. A test verifies that sandbox A cannot see sandbox B's data through any public endpoint.
+**AR-53. No external side effects:** `DemoMailbox` instead of SMTP.
 
-**AR-53. No external side effects in the demo.**
-- The email adapter is replaced with `DemoMailbox`: emails are stored in the sandbox DB and shown in a built-in "mailbox".
-- The map uses the same tile provider with a separate key/quota.
+**AR-54. Limits:** 24 h TTL with cleanup (separate RLS-bypassing role), per-IP and global caps (`429`), "Демо" badge on every screen.
 
-**AR-54. Sandboxes are temporary and limited.**
-- Sandbox TTL is 24 hours; then a cleanup job deletes its data and S3 objects. Cleanup runs under a separate role allowed to bypass RLS.
-- Sandbox creation is rate-limited per IP, with a global cap on active sandboxes; exceeding it returns `429` with a clear message.
-- A "Demo" badge is visible on every screen.
-
-**AR-55. Race demonstration.** The demo has a "Two claimants at once" action: the frontend sends two `agree-handover` requests in parallel and shows that one succeeded and the other got `409 HANDOVER_ALREADY_AGREED`. This is a real call, not an animation.
+**AR-55. Race demo:** "Two claimants at once" sends two real parallel `agree-handover` calls and shows the `409`.
 
 ---
 
@@ -343,48 +306,6 @@ Decision: a server sandbox ([ADR-0001](adr/0001-demo-server-sandbox.md)). The de
 - Commit messages follow Conventional Commits (`feat(responses): …`).
 - The language of code, comments, commits and documentation is English; the product UI is in Russian.
 
-**AR-68. ADRs** (`docs/adr/NNNN-<slug>.md`: Context → Decision → Alternatives → Consequences, see [template](adr/0000-template.md)). Required for:
-- every item in the "decisions to be made" lists of the business requirements/stack;
-- a new arrow in AR-03;
-- a new technology;
-- a deviation from a rule in this document.
+**AR-68. ADRs** ([index](adr/README.md), [template](adr/0000-template.md)) are required for: an open product/technical decision, a new arrow in AR-03, a new technology, a deviation from a rule.
 
-**AR-69. Definition of Done for a task:** code + tests per §10, updated OpenAPI spec, migration (if needed), a learning note in `docs/learning/`, green CI, a PR that answers the §13 checklist. The full process is in [workflow.md](workflow.md).
-
----
-
-## 13. Pull request review checklist
-
-- [ ] No imports from other modules' `internal`/`web` and no new module arrows (AR-02–AR-04)
-- [ ] Status changes through an aggregate method, not a setter; the state machine is tested (AR-10)
-- [ ] Transaction on the use case, no network calls inside (AR-12, AR-13)
-- [ ] Concurrent scenario protected by a lock and a DB constraint, with a race test (AR-14–AR-15, AR-60)
-- [ ] Repeating a command does not produce duplicate events or notifications (AR-17, AR-48)
-- [ ] Public DTOs contain no private fields; the leak test is updated (AR-29, AR-59)
-- [ ] Negative access tests exist (AR-32, AR-58)
-- [ ] Errors are Problem Details with a stable `code` (AR-28)
-- [ ] The migration is new, not an edit of an old one; the table owner is stated (AR-19, AR-20)
-- [ ] A new business table is covered by an RLS policy in `db/migration-demo`; the sandbox isolation test is green (AR-52)
-- [ ] No PII, tokens or message text in logs (AR-36)
-- [ ] The UI works at 360 px; buttons come from `allowedActions` (AR-42, AR-45)
-
----
-
-## 14. Decisions
-
-### Accepted (2026-10-11)
-
-| ADR | Decision | Rules |
-|---|---|---|
-| [0001](adr/0001-demo-server-sandbox.md) | The demo is a server sandbox in a separate deployment with RLS | AR-50…AR-55 |
-| [0002](adr/0002-two-party-return-confirmation.md) | Both sides confirm the return; one-sided completion is allowed after a timeout (3 / 14 days) | AR-16 |
-| [0003](adr/0003-public-location-coarsening.md) | The public point is coarsened: 500 m, 1500 m for sensitive categories (documents, keys, bank cards) | AR-24 |
-| [0004](adr/0004-client-side-draft.md) | The pre-login draft with photos is stored in IndexedDB | AR-43 |
-| [0005](adr/0005-openapi-code-first.md) | Code-first OpenAPI, spec committed, CI catches breaking changes | AR-27 |
-| [0006](adr/0006-uuidv7-identifiers.md) | UUIDv7 identifiers generated by the application | AR-21 |
-
-### Open
-
-| # | Question | Affects |
-|---|---|---|
-| Q1 | Email OTP or magic link | AR-34, `identity` |
+**AR-69. Definition of Done for a task:** code + tests per §10, updated OpenAPI spec, migration (if needed), a learning note in `docs/learning/`, green CI, a PR that answers the checklist in [`.github/pull_request_template.md`](../.github/pull_request_template.md). Process: [workflow.md](workflow.md).
