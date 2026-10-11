@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: verni
+  threads:
+    virtual:
+      enabled: true
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+  session:
+    jdbc:
+      initialize-schema: never
+
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: true
+        same-site: lax
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  structured:
+    format:
+      console: ecs
+
+verni:
+  demo:
+    enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/verni
+    username: verni
+    password: verni
+  mail:
+    host: localhost
+    port: 1025
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+
+logging:
+  structured:
+    format:
+      console: ""
