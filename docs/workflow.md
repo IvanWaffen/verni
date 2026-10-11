@@ -5,7 +5,7 @@
 
 ## 1. Task process
 
-**Tracker:** GitHub Issues (+ a GitHub Projects board).
+**Tracker:** GitHub Issues + the [VERNI project board](https://github.com/users/IvanWaffen/projects/1) with columns `Backlog → Ready → In progress → Review → Done`. The owner moves issues to `Ready`; the agent moves them to `In progress` and `Review`; merged/closed items go to `Done` automatically.
 
 - Milestones: `Pilot`, `Release 1.0`.
 - Labels: `type:*` (feature, infra, bug, chore), `module:*`, `area:backend` / `area:frontend`, `P0` / `P1`, `blocked`, `needs-decision`.

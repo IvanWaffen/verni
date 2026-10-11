@@ -30,6 +30,15 @@ The owner is a PHP/Laravel developer learning Java/Spring through this project. 
 7. **Verify locally** before pushing (see Commands).
 8. **PR:** `gh pr create` with a Conventional Commits title. The template asks for issue link, verification steps, learning note and the AR checklist. Then watch CI (`gh pr checks --watch`) and fix failures.
 9. **Never merge PRs.** The owner reviews and squash-merges.
+10. **Board:** move the issue on the [project board](https://github.com/users/IvanWaffen/projects/1) to `In progress` when work starts and to `Review` when the PR is open (merged/closed items move to `Done` automatically). Add new issues and PRs to the board.
+
+```bash
+# project id PVT_kwHOEHBS7c4BmlA3, Status field PVTSSF_lAHOEHBS7c4BmlA3zhlNccE
+# options: Backlog b38aff69, Ready 2af98023, In progress 88dbd9f4, Review 6c9722ad, Done 1189d492
+ITEM=$(gh project item-add 1 --owner IvanWaffen --url <issue-or-pr-url> --format json -q .id)
+gh project item-edit --project-id PVT_kwHOEHBS7c4BmlA3 --id "$ITEM" \
+  --field-id PVTSSF_lAHOEHBS7c4BmlA3zhlNccE --single-select-option-id 88dbd9f4
+```
 
 ## Commands
 
