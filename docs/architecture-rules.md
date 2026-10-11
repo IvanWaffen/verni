@@ -349,7 +349,7 @@ Decision: a server sandbox ([ADR-0001](adr/0001-demo-server-sandbox.md)). The de
 - a new technology;
 - a deviation from a rule in this document.
 
-**AR-69. Definition of Done for a task:** code + tests per §10, updated OpenAPI spec, migration (if needed), green CI, a PR that answers the §13 checklist.
+**AR-69. Definition of Done for a task:** code + tests per §10, updated OpenAPI spec, migration (if needed), a learning note in `docs/learning/`, green CI, a PR that answers the §13 checklist. The full process is in [workflow.md](workflow.md).
 
 ---
 

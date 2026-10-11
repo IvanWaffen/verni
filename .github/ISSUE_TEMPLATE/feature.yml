@@ -1,0 +1,39 @@
+name: Feature
+description: A vertical slice of product functionality
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Business requirement / user story references (BR-xx, US-xx, E2E-xx).
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is included (backend, frontend, migrations, tests).
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Verifiable checklist.
+    validations:
+      required: true
+  - type: textarea
+    id: rules
+    attributes:
+      label: Architecture rules and ADRs
+      description: AR-xx / ADR-xxxx that apply.
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Open decisions
+      description: Questions to resolve before implementation (become ADRs).
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope

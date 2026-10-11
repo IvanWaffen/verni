@@ -8,6 +8,8 @@ A web platform that helps people find and return lost items: a public feed and m
 - [Tech stack and architecture](docs/tech-stack.md)
 - [Architecture rules](docs/architecture-rules.md) — mandatory for every change
 - [Architecture decision records](docs/adr/)
+- [Development workflow](docs/workflow.md) — branches, commits, CI/CD, task process
+- [Learning notes](docs/learning/) — Java/Spring explained through Laravel
 
 ## Repository layout
 
